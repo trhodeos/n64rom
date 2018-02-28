@@ -14,4 +14,6 @@ func main() {
 	}
 	h, err := n64rom.ParseHeader(f, binary.BigEndian)
 	fmt.Printf("%+v\n", h)
+	blank := n64rom.GetBlankHeader()
+	fmt.Printf("%+v\n", blank)
 }

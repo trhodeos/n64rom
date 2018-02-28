@@ -65,6 +65,18 @@ type Header struct {
 	Version        uint8
 }
 
+func GetBlankHeader() Header {
+	return Header{
+		X1:          128,
+		X2:          55,
+		X3:          18,
+		X4:          64,
+		ClockRate:   0xF,
+		BootAddress: 0x80000400,
+		Release:     0x144c,
+	}
+}
+
 func ParseHeader(r io.Reader, bo binary.ByteOrder) (Header, error) {
 	out := Header{}
 	err := binary.Read(r, bo, &out)
