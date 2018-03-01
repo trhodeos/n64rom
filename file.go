@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/trhodeos/ecoff"
 	"io"
 	"io/ioutil"
 )
@@ -63,12 +64,36 @@ func NewRomFile(header Header, bootloader io.Reader, font io.Reader, fill byte) 
 	if err != nil {
 		return RomFile{}, err
 	}
+	bootloaderHeader, err := ecoff.ParseHeader(
+		bytes.NewReader(bootloaderBytes), binary.BigEndian)
+	if err != nil {
+		return RomFile{}, err
+	}
+	if len(bootloaderHeader.SectionHeaders) != 2 {
+		return RomFile{}, errors.New(fmt.Sprintf("Expected 2 sections in bootloader found %d.", len(bootloaderHeader.SectionHeaders)))
+	}
+	var sectionHeader *ecoff.SectionHeader
+	for _, header := range bootloaderHeader.SectionHeaders {
+		if string(header.Name[0:5]) == ".text" {
+			sectionHeader = &header
+			break
+		}
+	}
+	if sectionHeader == nil {
+		return RomFile{}, errors.New("Could not find section named '.text'.")
+	}
+	textSize := int64(sectionHeader.Size)
+	bootloaderTextBytes := make([]byte, textSize)
+	_, err = bytes.NewReader(bootloaderBytes).ReadAt(bootloaderTextBytes, textSize)
+	if err != nil {
+		return RomFile{}, err
+	}
 	fontBytes, err := ioutil.ReadAll(font)
 	if err != nil {
 		return RomFile{}, err
 	}
 
-	rom := RomFile{header: header, bootloaderAndFont: append(bootloaderBytes, fontBytes...), fillValue: fill}
+	rom := RomFile{header: header, objects: map[int64][]byte{}, bootloaderAndFont: append(bootloaderTextBytes, fontBytes...), fillValue: fill}
 	err = rom.checkValidity()
 	return rom, err
 }
