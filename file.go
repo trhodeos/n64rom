@@ -2,6 +2,7 @@ package n64rom
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -9,7 +10,7 @@ import (
 )
 
 type RomFile struct {
-  header Header
+	header            Header
 	bootloaderAndFont []byte
 	objects           map[int64][]byte
 	fillValue         byte
@@ -34,7 +35,7 @@ func checkData(name string, data *[]byte, maxSize int) error {
 }
 
 func (r RomFile) checkValidity() error {
-	err = checkData("Bootloader+Font", &r.bootloaderAndFont, maxBootloaderSize)
+	err := checkData("Bootloader+Font", &r.bootloaderAndFont, maxBootloaderSize)
 	if err != nil {
 		return err
 	}
@@ -47,14 +48,14 @@ func (r RomFile) fillAt(o io.WriterAt, start int, end int) (int, error) {
 }
 
 func (r RomFile) getHeaderBytes() ([]byte, error) {
-        buffer := bytes.Buffer.NewBuffer([]byte)
-	err := binary.Write(buffer, ByteOrder.BigEndian, r.header)
-        return buffer.Bytes(), err
+	buf := new(bytes.Buffer)
+	err := binary.Write(buf, binary.BigEndian, r.header)
+	return buf.Bytes(), err
 }
 
 func NewBlankRomFile(bootloader io.Reader, font io.Reader, fill byte) (RomFile, error) {
-  // TODO: search PATH for bootloader and font files
-  return NewRomFile(GetBlankHeader(), bootloader, font, fill)
+	// TODO: search PATH for bootloader and font files
+	return NewRomFile(GetBlankHeader(), bootloader, font, fill)
 }
 
 func NewRomFile(header Header, bootloader io.Reader, font io.Reader, fill byte) (RomFile, error) {
@@ -83,12 +84,17 @@ func (r *RomFile) WriteAt(p []byte, i int64) error {
 
 func (r *RomFile) Save(o io.WriterAt) (int, error) {
 	total := 0
-	n, err := o.WriteAt(r.header, 0x0)
+	headerBytes, err := r.getHeaderBytes()
+	if err != nil {
+		return total, err
+	}
+
+	n, err := o.WriteAt(headerBytes, 0x0)
 	total += n
 	if err != nil {
 		return total, err
 	}
-	n, err = r.fillAt(o, len(r.header), maxHeaderSize)
+	n, err = r.fillAt(o, len(headerBytes), maxHeaderSize)
 	total += n
 	if err != nil {
 		return total, err

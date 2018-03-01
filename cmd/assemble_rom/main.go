@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/trhodeos/n64rom"
 	"os"
 )
@@ -18,12 +19,15 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	rom, err := n64rom.NewDefaultRom(bootloader, font, 0)
+
+	rom, err := n64rom.NewBlankRomFile(bootloader, font, 0)
 	if err != nil {
 		panic(err)
 	}
-	err := rom.Save(writer)
+
+	total, err := rom.Save(writer)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("Saved %d bytes to %s.", total, os.Args[3])
 }
