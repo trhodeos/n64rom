@@ -19,8 +19,8 @@ type RomFile struct {
 
 const maxHeaderSize = 0x40
 const bootloaderStart = 0x40
-const maxBootloaderSize = codeStart - maxHeaderSize
-const codeStart = 0x1000
+const maxBootloaderSize = CodeStart - maxHeaderSize
+const CodeStart = 0x1000
 
 func checkData(name string, data *[]byte, maxSize int) error {
 	if data == nil {
@@ -36,10 +36,10 @@ func checkData(name string, data *[]byte, maxSize int) error {
 }
 
 func (r RomFile) checkValidity() error {
-	err := checkData("Bootloader+Font", &r.bootloaderAndFont, maxBootloaderSize)
-	if err != nil {
-		return err
-	}
+	//err := checkData("Bootloader+Font", &r.bootloaderAndFont, maxBootloaderSize)
+	//if err != nil {
+	//	return err
+	//}
 	return nil
 }
 
@@ -54,23 +54,23 @@ func (r RomFile) getHeaderBytes() ([]byte, error) {
 	return buf.Bytes(), err
 }
 
-func NewBlankRomFile(bootloader io.Reader, font io.Reader, fill byte) (RomFile, error) {
+func NewBlankRomFile(fill byte) (RomFile, error) {
 	// TODO: search PATH for bootloader and font files
-	return NewRomFile(GetBlankHeader(), bootloader, font, fill)
+	return NewRomFile(GetBlankHeader(), nil, nil, fill)
 }
 
-func NewRomFile(header Header, bootloader io.Reader, font io.Reader, fill byte) (RomFile, error) {
+func getPreambleBytes(bootloader io.Reader, font io.Reader) ([]byte, error) {
 	bootloaderBytes, err := ioutil.ReadAll(bootloader)
 	if err != nil {
-		return RomFile{}, err
+		return nil, err
 	}
 	bootloaderHeader, err := ecoff.ParseHeader(
 		bytes.NewReader(bootloaderBytes), binary.BigEndian)
 	if err != nil {
-		return RomFile{}, err
+		return nil, err
 	}
 	if len(bootloaderHeader.SectionHeaders) != 2 {
-		return RomFile{}, errors.New(fmt.Sprintf("Expected 2 sections in bootloader found %d.", len(bootloaderHeader.SectionHeaders)))
+		return nil, errors.New(fmt.Sprintf("Expected 2 sections in bootloader found %d.", len(bootloaderHeader.SectionHeaders)))
 	}
 	var sectionHeader *ecoff.SectionHeader
 	for _, header := range bootloaderHeader.SectionHeaders {
@@ -80,28 +80,41 @@ func NewRomFile(header Header, bootloader io.Reader, font io.Reader, fill byte) 
 		}
 	}
 	if sectionHeader == nil {
-		return RomFile{}, errors.New("Could not find section named '.text'.")
+		return nil, errors.New("Could not find section named '.text'.")
 	}
 	textSize := int64(sectionHeader.Size)
 	bootloaderTextBytes := make([]byte, textSize)
 	_, err = bytes.NewReader(bootloaderBytes).ReadAt(bootloaderTextBytes, textSize)
 	if err != nil {
-		return RomFile{}, err
+		return nil, err
 	}
 	fontBytes, err := ioutil.ReadAll(font)
 	if err != nil {
-		return RomFile{}, err
+		return nil, err
 	}
+	return append(bootloaderTextBytes, fontBytes...), nil
+}
 
-	rom := RomFile{header: header, objects: map[int64][]byte{}, bootloaderAndFont: append(bootloaderTextBytes, fontBytes...), fillValue: fill}
+func NewRomFile(header Header, bootloader io.Reader, font io.Reader, fill byte) (RomFile, error) {
+	var preamble []byte
+	var err error
+	if bootloader != nil && font != nil {
+		preamble, err = getPreambleBytes(bootloader, font)
+		if err != nil {
+			return RomFile{}, err
+		}
+	} else {
+		preamble = []byte{}
+	}
+	rom := RomFile{header: header, objects: map[int64][]byte{}, bootloaderAndFont: preamble, fillValue: fill}
 	err = rom.checkValidity()
 	return rom, err
 }
 
 func (r *RomFile) WriteAt(p []byte, i int64) error {
-	if i < codeStart {
+	if i < CodeStart {
 		return errors.New(
-			fmt.Sprintf("Cannot write at %d: This would overwrite bootloader before %d", i, codeStart))
+			fmt.Sprintf("Cannot write at %d: This would overwrite bootloader before %d", i, CodeStart))
 	}
 	r.objects[i] = p
 	return nil
@@ -129,7 +142,7 @@ func (r *RomFile) Save(o io.WriterAt) (int, error) {
 	if err != nil {
 		return total, err
 	}
-	n, err = r.fillAt(o, maxHeaderSize+len(r.bootloaderAndFont), codeStart)
+	n, err = r.fillAt(o, maxHeaderSize+len(r.bootloaderAndFont), CodeStart)
 	total += n
 	if err != nil {
 		return total, err
@@ -143,6 +156,5 @@ func (r *RomFile) Save(o io.WriterAt) (int, error) {
 		}
 	}
 
-	// TODO update checksum
 	return total, err
 }
